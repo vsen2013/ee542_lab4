@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_compile_options(-Wall)
 
-add_executable(client client.cc)
-add_executable(server server.cc)
+add_executable(client client.cc util.h)
+add_executable(server server.cc util.h)
 
 target_link_libraries(client crypto pthread)
