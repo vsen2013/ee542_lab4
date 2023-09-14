@@ -39,11 +39,14 @@ void acknowledgment_listener(int sock_fd) {
 
 void send_packet(int sock_fd, const char *packet, size_t length, const struct sockaddr *dest_addr, socklen_t addrlen) {
     while (true) {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::unique_lock<std::mutex> lock(mtx); // Use a unique_lock
         ack_received = false;
+        lock.unlock(); // Unlock before sending
         sendto(sock_fd, packet, length, MSG_CONFIRM, dest_addr, addrlen);
+        
         // Wait for acknowledgment with a timeout
-        if (cv.wait_for(mtx, std::chrono::milliseconds(1000), [] { return ack_received; })) {
+        lock.lock(); // Lock again before waiting
+        if (cv.wait_for(lock, std::chrono::milliseconds(1000), [] { return ack_received; })) {
             break; // Acknowledgment received, exit loop
         } else {
             // Retransmit packet on timeout (adjust timeout as needed)
@@ -51,6 +54,7 @@ void send_packet(int sock_fd, const char *packet, size_t length, const struct so
         }
     }
 }
+
 
 void thread_func(int sock_fd, int tid, int fd, sockaddr_in servaddr, ssize_t read_offset, ssize_t read_size, int start_index) {
     std::cout << "thread id: " << tid << " reads start at " << read_offset << " for " << read_size << std::endl;
