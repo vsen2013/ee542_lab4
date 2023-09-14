@@ -22,17 +22,24 @@ inline size_t GetFileSize(const std::string& filename) {
 }
 
 int block_size = 16384;
-void thread_func(int sock_fd, int tid, int fd, sockaddr_in servaddr, ssize_t read_offset, ssize_t read_size) {
+void thread_func(int sock_fd, int tid, int fd, sockaddr_in servaddr, ssize_t read_offset, ssize_t read_size, int start_index) {
   std::cout << "thread id: " << tid << " reads start at " << read_offset << " for " << read_size << std::endl;
   int cnt = 0;
-  char read_buf[16384];
+  char read_buf[16388];
   while(cnt <= read_size) {
-    std::cout << "tid: " << tid << ", cnt " << cnt + read_offset << std::endl;
+    std::cout << "tid: " << tid << ", cnt " << cnt + read_offset << ", read size: " << read_size << ", index: " << start_index << std::endl;
     int length = (cnt + block_size > read_size) ? read_size - cnt : block_size;
-    int n = pread(fd, read_buf, length, read_offset + cnt);
-    n = sendto(sock_fd, (const char*)read_buf, length, 
+    // add data to read_buf
+    int n = pread(fd, read_buf + sizeof(uint32_t), length, read_offset + cnt);
+    if(n != length) {
+      exit(EXIT_FAILURE);
+    }
+    // add block index to read_buf header
+    memcpy(read_buf, &start_index, sizeof(uint32_t));
+    start_index++;
+    n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
                     MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
-    sleep(1);
+    sleep(0.5);
     cnt += block_size;
   }
 }
@@ -78,7 +85,9 @@ int main(int argc, char* argv[]) {
   }
 
   int thread_num = 3;
-  int size_per_thread = filesize / thread_num;
+  int index_count = filesize / block_size;
+  int block_per_thread = index_count / thread_num;
+  int size_per_thread = block_per_thread * block_size;
   int last_size_per_thread = filesize - (thread_num - 1) * size_per_thread;
   std::vector<std::thread> threads(thread_num);
   for(int i = 0; i < thread_num; ++i) {
@@ -86,7 +95,7 @@ int main(int argc, char* argv[]) {
     if(i == thread_num - 1) { // treat last size_per_thread carefully
       read_size = last_size_per_thread;
     }
-    threads[i] = std::thread(thread_func, sock_fd, i, fd, servaddr, i * size_per_thread, read_size);
+    threads[i] = std::thread(thread_func, sock_fd, i, fd, servaddr, i * size_per_thread, read_size, i * block_per_thread);
   }
 
   for(int i = 0; i < thread_num; ++i) {
