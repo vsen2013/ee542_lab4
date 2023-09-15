@@ -16,7 +16,6 @@
 
 #include "util.h"
 
-#define MAX_RETRIES 10
 // Implementation of client.
 class Client {
   public:
@@ -86,44 +85,57 @@ class Client {
       std::cout << "thread id: " << tid << " reads start at " << read_offset << " for " << read_size << std::endl;
       int cnt = 0;
       char read_buf[16388];
-      while(cnt < read_size) {
+      int max_retries = 5;
+      int retries = 0;
+      while (cnt < read_size && retries < max_retries)
+      {
         std::cout << "tid: " << tid << ", cnt " << cnt + read_offset << ", read size: " << read_size << ", index: " << start_index << std::endl;
         int length = (cnt + opts_.block_size > read_size) ? read_size - cnt : opts_.block_size;
         // add data to read_buf
-        int n = pread(fd, read_buf + sizeof(uint32_t), length, read_offset + cnt);
-        assert(n == length);
-        // add block index to read_buf header
+        int n = pread(fd, read_buf + sizeof(uint32_t), length, cnt + read_offset);
+        assert(n != length);
+        // send data
         memcpy(read_buf, &start_index, sizeof(uint32_t));
-        // add retransmission logic
-        int retries = 0;
-        bool ack_received = false;
-        while(retries < MAX_RETRIES && !ack_received) {
-          // Send packet with acknowledgment mechanism
-          int n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
+        n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
                         MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
-          // Wait for acknowledgment with a timeout
-          usleep(200000);
-          char ack_buf[4];
-          if (recv(sock_fd, ack_buf, sizeof(ack_buf), MSG_DONTWAIT) != -1) {
-            // Handle acknowledgment (if needed)
-            ack_received = true;
-          } else {
-            // Retransmit packet on timeout (adjust timeout as needed)
-            std::cout << "Timeout, retransmitting packet..." << std::endl;
-            ++retries;
-            usleep(200000);
-          }
+        if (n == -1)
+        {
+          std::cerr << "Error sending data, retrying..." << std::endl;
+          retries++;
+          continue;
         }
-        assert(ack_received);
-        // n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
-        //                 MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
-        // int index_confirm;
-        // socklen_t len = sizeof(servaddr);
-        // // acquire ACK
-        // n = recvfrom(sock_fd, (char*)&index_confirm, sizeof(uint32_t), MSG_WAITALL, ( struct sockaddr *) &servaddr, &len);
-        // assert(index_confirm == start_index);
+        int index_confirm;
+        socklen_t len = sizeof(servaddr);
+        struct timeval tv;
+        tv.tv_sec = 0.5;
+        tv.tv_usec = 0;
+        setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+
+        // receive ack
+        n = recvfrom(sock_fd, (char*)&index_confirm, sizeof(uint32_t), MSG_WAITALL, (struct sockaddr *) &servaddr, &len);
+
+        if (n == -1)
+        {
+          std::cerr << "Error receiving ack, retrying..." << std::endl;
+          retries++;
+          continue;
+        }
+
+        if (index_confirm != start_index)
+        {
+          std::cerr << "Error receiving ack, retrying..." << std::endl;
+          retries++;
+          continue;
+        }
         ++start_index;
         cnt += opts_.block_size;
+        retries = 0;
+
+        if(retries == max_retries) {
+          std::cerr << "Max retries reached, exiting..." << std::endl;
+          exit(EXIT_FAILURE);
+        }
+         
       }
     }
 
