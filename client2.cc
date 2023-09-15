@@ -13,7 +13,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <assert.h>
-
+#include <iostream>
+#include <chrono>
 #include "util.h"
 
 // Implementation of client.
@@ -33,6 +34,7 @@ class Client {
     }
 
     Status Upload(std::string& filepath) {
+      auto start_time = std::chrono::high_resolution_clock::now();
       int n = -1;
       // file open and validation
       fd_ = open(filepath.c_str(), O_RDONLY);
@@ -73,6 +75,9 @@ class Client {
         threads[i].join();
       }
       close(fd_);
+      auto end_time = std::chrono::high_resolution_clock::now(); // Stop measuring time
+      std::chrono::duration<double> duration = end_time - start_time;
+      std::cout << "Time taken for file transfer: " << duration.count() << " seconds" << std::endl;
       return Status::Ok;
     }
   private:
