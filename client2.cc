@@ -93,7 +93,7 @@ class Client {
         int length = (cnt + opts_.block_size > read_size) ? read_size - cnt : opts_.block_size;
         // add data to read_buf
         int n = pread(fd, read_buf + sizeof(uint32_t), length, cnt + read_offset);
-        assert(n != length);
+        assert(n == length);
         // send data
         memcpy(read_buf, &start_index, sizeof(uint32_t));
         n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
