@@ -96,7 +96,8 @@ public:
                     expected_index++;  // Increment expected packet index
                 } else {
                     // Received an out-of-order packet, send ACK for the last in-order packet
-                    int index_send_len = sendto(sock_fd_, (const char*)&(expected_index - 1), sizeof(uint32_t), MSG_CONFIRM, (struct sockaddr*)&clientaddr_, len);
+                    uint32_t prev_index = expected_index - 1;
+                    int index_send_len = sendto(sock_fd_, (const char*)&prev_index, sizeof(uint32_t), MSG_CONFIRM, (struct sockaddr*)&clientaddr_, len);
                     assert(index_send_len == sizeof(uint32_t));
                 }
             }
