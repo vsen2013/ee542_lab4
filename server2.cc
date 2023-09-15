@@ -14,9 +14,6 @@
 #include <cassert>  // Include the <cassert> header for the 'assert' macro
 #include "util.h"
 
-// Define a unique PORT for the server
-#define SERVER_PORT 8080
-
 class Server {
 public:
     Server() = default;
@@ -31,7 +28,7 @@ public:
 
         servaddr_.sin_family = AF_INET;
         servaddr_.sin_addr.s_addr = INADDR_ANY;
-        servaddr_.sin_port = htons(SERVER_PORT); // Use the unique SERVER_PORT
+        servaddr_.sin_port = htons(port); // Use the unique SERVER_PORT
 
         if (bind(sock_fd_, (const struct sockaddr*)&servaddr_, sizeof(servaddr_)) < 0) {
             return Status::IO_ERROR;
