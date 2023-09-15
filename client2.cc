@@ -102,6 +102,7 @@ class Client {
           int n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
                         MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
           // Wait for acknowledgment with a timeout
+          usleep(200000);
           char ack_buf[4];
           if (recv(sock_fd, ack_buf, sizeof(ack_buf), MSG_DONTWAIT) != -1) {
             // Handle acknowledgment (if needed)
@@ -110,6 +111,7 @@ class Client {
             // Retransmit packet on timeout (adjust timeout as needed)
             std::cout << "Timeout, retransmitting packet..." << std::endl;
             ++retries;
+            usleep(200000);
           }
         }
         assert(ack_received);
