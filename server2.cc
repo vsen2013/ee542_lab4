@@ -28,7 +28,7 @@ public:
 
         servaddr_.sin_family = AF_INET;
         servaddr_.sin_addr.s_addr = INADDR_ANY;
-        servaddr_.sin_port = htons(port); // Use the unique SERVER_PORT
+        servaddr_.sin_port = htons(PORT); // Use the unique SERVER_PORT
 
         if (bind(sock_fd_, (const struct sockaddr*)&servaddr_, sizeof(servaddr_)) < 0) {
             return Status::IO_ERROR;
