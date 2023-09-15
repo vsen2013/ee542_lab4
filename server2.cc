@@ -11,10 +11,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <cassert>  // Include the <cassert> header for the 'assert' macro
 #include "util.h"
 
-#define MAXLINE 16388
-#define PORT 8080
+// Define a unique PORT for the server
+#define SERVER_PORT 8080
 
 class Server {
 public:
@@ -30,7 +31,7 @@ public:
 
         servaddr_.sin_family = AF_INET;
         servaddr_.sin_addr.s_addr = INADDR_ANY;
-        servaddr_.sin_port = htons(PORT);
+        servaddr_.sin_port = htons(SERVER_PORT); // Use the unique SERVER_PORT
 
         if (bind(sock_fd_, (const struct sockaddr*)&servaddr_, sizeof(servaddr_)) < 0) {
             return Status::IO_ERROR;
