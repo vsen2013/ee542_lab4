@@ -9,4 +9,7 @@ add_compile_options(-Wall)
 add_executable(client client.cc util.h)
 add_executable(server server.cc util.h)
 
+# add_definitions(-DDEBUG)
+
 target_link_libraries(client crypto pthread)
+target_link_libraries(server pthread)

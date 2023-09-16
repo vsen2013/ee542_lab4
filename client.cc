@@ -13,8 +13,10 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <chrono>
 
 #include "util.h"
+#include "lf_queue.h"
 
 // Implementation of client.
 class Client {
@@ -26,6 +28,15 @@ class Client {
         return Status::IO_ERROR;
       }
       memset(&servaddr_, 0, sizeof(servaddr_));
+
+      // set timeout
+      struct timeval timeout;
+      timeout.tv_sec = 1;
+      timeout.tv_usec = 0;
+      if (setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+        return Status::IO_ERROR;
+      }
+
       servaddr_.sin_family = AF_INET;
       servaddr_.sin_addr.s_addr = inet_addr(server_addr_.c_str());
       servaddr_.sin_port = htons(PORT);
@@ -39,7 +50,6 @@ class Client {
       if (fd_ == -1) { return Status::IO_ERROR; }
 
       std::string filename = ParseFileName(filepath);
-      std::cout << "filename: " << filename << std::endl;
       // send filename
       while(n == -1) {
         n = sendto(sock_fd_, (const char*)filename.c_str(), filename.length(), 
@@ -57,20 +67,40 @@ class Client {
       }
 
       int index_count = filesize / opts_.block_size;
-      int block_per_thread = index_count / opts_.thread_num;
-      int size_per_thread = block_per_thread * opts_.block_size;
-      int last_size_per_thread = filesize - (opts_.thread_num - 1) * size_per_thread;
       std::vector<std::thread> threads(opts_.thread_num);
+      
+      // create background thread for sweeping block status
+      for(int i = 0; i <= index_count; ++i) {
+        ack_status[i].store(0);
+      }
+
+      std::thread bgack(&Client::sweep, this);
+
+      // start send file
+      auto start = std::chrono::steady_clock::now();
+      
       for(int i = 0; i < opts_.thread_num; ++i) {
-        int read_size = size_per_thread;
-        if(i == opts_.thread_num - 1) { // treat last size_per_thread carefully
-          read_size = last_size_per_thread;
-        }
-        threads[i] = std::thread(&Client::thread_func, this, sock_fd_, i, fd_, servaddr_, i * size_per_thread, read_size, i * block_per_thread);
+        threads[i] = std::thread(&Client::thread_func, this, i, filesize);
       }
 
       for(int i = 0; i < opts_.thread_num; ++i) {
         threads[i].join();
+      }
+
+      // end send file
+      auto end = std::chrono::steady_clock::now(); 
+
+      std::cout << "Elapsed time in milliseconds: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+        << " ms" << std::endl;
+
+      bgack.join();
+
+      const char* eof = "eof";
+      n = -1;
+      while(n == -1) {
+        n = sendto(sock_fd_, (const char*)eof, strlen(eof), 
+                      MSG_CONFIRM, (struct sockaddr *) &servaddr_, sizeof(servaddr_));
       }
       close(fd_);
       return Status::Ok;
@@ -80,28 +110,57 @@ class Client {
     int sock_fd_, fd_;
     std::string server_addr_;
     struct sockaddr_in servaddr_;
+    std::map<int, std::atomic<int>> ack_status;
+    MutexQueue task_queue;
   private:
-    void thread_func(int sock_fd, int tid, int fd, sockaddr_in servaddr, ssize_t read_offset, ssize_t read_size, int start_index) {
-      std::cout << "thread id: " << tid << " reads start at " << read_offset << " for " << read_size << std::endl;
-      int cnt = 0;
+    void thread_func(int tid, int filesize) {
       char read_buf[16388];
-      while(cnt < read_size) {
-        std::cout << "tid: " << tid << ", cnt " << cnt + read_offset << ", read size: " << read_size << ", index: " << start_index << std::endl;
-        int length = (cnt + opts_.block_size > read_size) ? read_size - cnt : opts_.block_size;
-        // add data to read_buf
-        int n = pread(fd, read_buf + sizeof(uint32_t), length, read_offset + cnt);
+      while(true) {
+        int idx = task_queue.pop();
+        if(idx == -1) return;
+        int read_offset = idx * opts_.block_size;
+        int length = (read_offset + opts_.block_size > filesize) ? filesize - read_offset : opts_.block_size;
+#ifdef DEBUG
+        std::cout << "tid: " << tid << ", read_index: " << idx << ", read offset: " << read_offset << std::endl;
+#endif
+         // add data to read_buf
+        int n = pread(fd_, read_buf + sizeof(uint32_t), length, read_offset);
         assert(n == length);
         // add block index to read_buf header
-        memcpy(read_buf, &start_index, sizeof(uint32_t));
-        n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
-                        MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
-        int index_confirm;
-        socklen_t len = sizeof(servaddr);
+        memcpy(read_buf, &idx, sizeof(uint32_t));
+        n = sendto(sock_fd_, (const char*)read_buf, length + sizeof(uint32_t), 
+                        MSG_CONFIRM, (struct sockaddr *) &servaddr_, sizeof(servaddr_));
+        int ack_index;
+        socklen_t len = sizeof(servaddr_);
         // acquire ACK
-        n = recvfrom(sock_fd, (char*)&index_confirm, sizeof(uint32_t), MSG_WAITALL, ( struct sockaddr *) &servaddr, &len);
-        assert(index_confirm == start_index);
-        ++start_index;
-        cnt += opts_.block_size;
+        int cnt = 0;
+        while(cnt < opts_.retry_count) {
+          n = recvfrom(sock_fd_, (char*)&ack_index, sizeof(uint32_t), 0,  ( struct sockaddr *) &servaddr_, &len);
+          if(n != -1) {
+            ack_status[ack_index].store(1);
+            break;
+          }
+          ++cnt;
+        }
+      }
+    }
+
+    void sweep() {
+      int status = 1;
+      while(true) {
+        for(auto it = ack_status.begin(); it != ack_status.end(); ++it) {
+          if(it->second.load() == 0) {
+            // add to task queue if it hasn't been acked
+            task_queue.push(it->first);
+            if(status == 1) status = 0;
+          }
+        }
+        if(status == 1) {
+          task_queue.kill();
+          return;
+        }
+        status = 1;
+        sleep(2);
       }
     }
 
@@ -130,7 +189,7 @@ int main(int argc, char* argv[]) {
 
   Options options;
   options.block_size = 16384;
-  options.thread_num = 1;
+  options.thread_num = 10;
   Client client(options, server_addr);
   Status s = client.Init();
   if(s != Status::Ok) {
