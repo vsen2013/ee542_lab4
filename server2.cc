@@ -66,18 +66,10 @@ public:
     memset(buffer, 0, MAXLINE);
 
     int cur = 0;
-    while(cur < filesize) {
+    while (cur < filesize) {
       int recvd_len = recvfrom(sock_fd_, (char*) buffer, MAXLINE, MSG_WAITALL, ( struct sockaddr *) &clientaddr_, &len);
-      if(recvd_len != -1) {
+      if (recvd_len != -1) {
         // decode to get block index
-        // check if its an ACK packet
-        if (recvd_len == sizeof(uint32_t)) {
-          // extract the block index from ack packet
-          uint32_t ack_index;
-          memcpy(&ack_index, buffer, sizeof(uint32_t));
-          std::cout << "\r Received ACK for block index: " << ack_index << std::endl;
-        }
-        else{
         uint32_t index;
         memcpy(&index, buffer, sizeof(uint32_t));
         // send back ACK
@@ -88,7 +80,6 @@ public:
         assert(written_len != -1);
         cur += written_len;
         std::cout << "\rcursize: " << cur << ", get block index: " << index << std::endl;
-        }
       }
     }
     close(fd);
