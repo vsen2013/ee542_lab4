@@ -27,10 +27,15 @@ class Client {
         return Status::IO_ERROR;
       }
       memset(&servaddr_, 0, sizeof(servaddr_));
+      struct timeval tv;
+      tv.tv_sec = 0;
+      tv.tv_usec = 400000;
+      setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
       servaddr_.sin_family = AF_INET;
       servaddr_.sin_addr.s_addr = inet_addr(server_addr_.c_str());
       servaddr_.sin_port = htons(PORT);
       return Status::Ok;
+      
     }
 
     Status Upload(std::string& filepath) {
@@ -111,10 +116,6 @@ class Client {
         }
         int index_confirm;
         socklen_t len = sizeof(servaddr);
-        struct timeval tv;
-        tv.tv_sec = 0.5;
-        tv.tv_usec = 0;
-        setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
 
         // receive ack
         n = recvfrom(sock_fd, (char*)&index_confirm, sizeof(uint32_t), MSG_WAITALL, (struct sockaddr *) &servaddr, &len);
