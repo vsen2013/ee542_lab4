@@ -29,7 +29,7 @@ class Client {
       memset(&servaddr_, 0, sizeof(servaddr_));
       struct timeval tv;
       tv.tv_sec = 0;
-      tv.tv_usec = 100000;
+      tv.tv_usec = 400000;
       setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
       servaddr_.sin_family = AF_INET;
       servaddr_.sin_addr.s_addr = inet_addr(server_addr_.c_str());
@@ -67,6 +67,7 @@ class Client {
       int size_per_thread = block_per_thread * opts_.block_size;
       int last_size_per_thread = filesize - (opts_.thread_num - 1) * size_per_thread;
       std::vector<std::thread> threads(opts_.thread_num);
+      auto start_time = std::chrono::high_resolution_clock::now();
       for(int i = 0; i < opts_.thread_num; ++i) {
         int read_size = size_per_thread;
         if(i == opts_.thread_num - 1) { // treat last size_per_thread carefully
@@ -105,7 +106,6 @@ class Client {
         assert(n == length);
         // send data
         memcpy(read_buf, &start_index, sizeof(uint32_t));
-        auto start_time = std::chrono::high_resolution_clock::now();
         n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
                         MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
         if (n == -1)
