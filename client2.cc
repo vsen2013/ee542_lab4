@@ -29,8 +29,8 @@ class Client {
       memset(&servaddr_, 0, sizeof(servaddr_));
       struct timeval tv;
       tv.tv_sec = 0;
-      tv.tv_usec = 400000;
-      setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+      tv.tv_usec = 100000;
+      setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
       servaddr_.sin_family = AF_INET;
       servaddr_.sin_addr.s_addr = inet_addr(server_addr_.c_str());
       servaddr_.sin_port = htons(PORT);
@@ -39,7 +39,6 @@ class Client {
     }
 
     Status Upload(std::string& filepath) {
-      auto start_time = std::chrono::high_resolution_clock::now();
       int n = -1;
       // file open and validation
       fd_ = open(filepath.c_str(), O_RDONLY);
@@ -106,6 +105,7 @@ class Client {
         assert(n == length);
         // send data
         memcpy(read_buf, &start_index, sizeof(uint32_t));
+        auto start_time = std::chrono::high_resolution_clock::now();
         n = sendto(sock_fd, (const char*)read_buf, length + sizeof(uint32_t), 
                         MSG_CONFIRM, (struct sockaddr *) &servaddr, sizeof(servaddr));
         if (n == -1)
