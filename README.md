@@ -8,12 +8,12 @@ cmake .. & make -j
 
 For server, simply run 
 ```
-./server
+./tcp_server port_number file_path thread_count
 ```
 
 For client, run 
 ```
-./client server_address /path/to/file
+ ./tcp_client server_addr port_number thread_count
 ```
 
 To check md5sum of two files, run
