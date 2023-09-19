@@ -7,7 +7,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
-#include <openssl/md5.h>
 #include <sys/mman.h>
 #include <stdio.h>
 #include <stdlib.h>
