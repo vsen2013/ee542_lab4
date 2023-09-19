@@ -27,14 +27,18 @@ class Client {
         return Status::IO_ERROR;
       }
       memset(&servaddr_, 0, sizeof(servaddr_));
+      struct timeval tv;
+      tv.tv_sec = 0;
+      tv.tv_usec = 400000;
+      setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
       servaddr_.sin_family = AF_INET;
       servaddr_.sin_addr.s_addr = inet_addr(server_addr_.c_str());
       servaddr_.sin_port = htons(PORT);
       return Status::Ok;
+      
     }
 
     Status Upload(std::string& filepath) {
-      auto start_time = std::chrono::high_resolution_clock::now();
       int n = -1;
       // file open and validation
       fd_ = open(filepath.c_str(), O_RDONLY);
@@ -63,6 +67,7 @@ class Client {
       int size_per_thread = block_per_thread * opts_.block_size;
       int last_size_per_thread = filesize - (opts_.thread_num - 1) * size_per_thread;
       std::vector<std::thread> threads(opts_.thread_num);
+      auto start_time = std::chrono::high_resolution_clock::now();
       for(int i = 0; i < opts_.thread_num; ++i) {
         int read_size = size_per_thread;
         if(i == opts_.thread_num - 1) { // treat last size_per_thread carefully
@@ -111,10 +116,6 @@ class Client {
         }
         int index_confirm;
         socklen_t len = sizeof(servaddr);
-        struct timeval tv;
-        tv.tv_sec = 0.5;
-        tv.tv_usec = 0;
-        setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
 
         // receive ack
         n = recvfrom(sock_fd, (char*)&index_confirm, sizeof(uint32_t), MSG_WAITALL, (struct sockaddr *) &servaddr, &len);
